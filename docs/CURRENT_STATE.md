@@ -51,11 +51,26 @@
   (repo has no remote yet) — written and locally validated command-by-
   command, but the workflow file itself hasn't executed in Actions.
 
+## Phase 1 progress (in flight)
+
+- **`UrlValidator`** (SSRF protection, doc §27) — trait in
+  `droply-application`, implementation `SsrfSafeUrlValidator` in
+  `droply-infra`. Blocks non-http(s) schemes, `localhost`, loopback,
+  private ranges (10/8, 172.16/12, 192.168/16), link-local (covers the
+  169.254.169.254 AWS/GCP/Azure/DO metadata endpoint), shared address space
+  100.64.0.0/10 (covers Alibaba Cloud's 100.100.100.200 metadata endpoint),
+  IPv6 loopback/unique-local/link-local. Resolves DNS and checks **every**
+  returned address, not just the first (defends against DNS rebinding).
+  9 unit tests, all IP-literal based (no live DNS in tests, so they're not
+  flaky/slow). **Not yet wired into any HTTP call** — no analyzer or
+  download strategy exists yet to call it, and redirect-hop re-validation
+  is deferred to whichever Phase 1 piece first builds an HTTP client
+  (`DirectFileAnalyzer`, next).
+
 ## Explicitly not built yet (by design — see AGENTS.md rule 15)
 
-- `droply-application` crate is a placeholder (doc comment only) — no
-  traits defined yet (`MediaSourceAnalyzer`, `DownloadStrategy`, `UrlValidator`,
-  etc. all land in Phase 1).
+- `droply-application` has only `UrlValidator` so far — `MediaSourceAnalyzer`,
+  `DownloadStrategy`, etc. land with the rest of Phase 1.
 - No `Download`/`MediaSource`/`MediaVariant`/`LibraryItem` persistence — no
   DB schema exists yet.
 - No `/api/sources/analyze`, `/api/downloads/*` routes.
