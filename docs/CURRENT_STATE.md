@@ -1,6 +1,6 @@
 # Current State
 
-> Updated: 2026-08-11 — Phase 0 (skeleton) complete, not yet merged to `main`.
+> Updated: 2026-08-11 — Phase 0 (skeleton) complete and merged to `main`.
 
 ## What actually works right now
 
@@ -20,13 +20,16 @@
   `/migrations`) — directory exists but is **empty**, no schema yet (nothing
   to persist until Phase 1's `Download` entity).
 - **Docker Compose** (`postgres` + `droply-api` services) and
-  `docker/api.Dockerfile` (multi-stage, ~small runtime image) — written but
-  **not yet verified end-to-end**: the Docker daemon wasn't running in the
-  dev environment when this was built, so `docker compose up` itself hasn't
-  been exercised. Everything downstream of a live Postgres *has* been
-  verified via `cargo test -- --include-ignored` against a manually
-  reachable DB path (the CI job does run this against a real Postgres
-  service container).
+  `docker/api.Dockerfile` (multi-stage, ~small runtime image) — **verified
+  end-to-end**: `docker compose up -d --build` builds the API image, starts
+  both containers, `droply-api` connects to `postgres` over the compose
+  network, runs migrations, and `/healthz`/`/readyz` both return 200 through
+  the mapped host port. Host ports are non-default because this machine runs
+  other local projects' containers: Postgres is on **5434** (not 5432/5433,
+  already taken), the API is on **8082** (not 8080/8081, already taken). The
+  in-container `DATABASE_URL` (`postgres:5432`, the compose-network hostname)
+  is unaffected by the host remapping. `cargo test -- --include-ignored` also
+  passes against this live container.
 - **React PWA** (`apps/web`) — Vite + React 19 + TS strict + Tailwind v4 +
   `vite-plugin-pwa`. One route: Home (`/`) — disabled paste-URL form
   (Phase 1 wires it up) + live backend connectivity badge polling
@@ -59,14 +62,10 @@
 - No IndexedDB / library / player / file-manager frontend features.
 - No SSE progress stream (ADR 0004 — planned, not implemented).
 - `droply-media` crate doesn't exist (FFmpeg lands at Phase 4).
-- No GitHub remote — repo is local-only, on `feature/phase-0-skeleton`
-  branch, not yet merged to `main`.
+- No GitHub remote — repo is local-only.
 
 ## Known follow-ups
 
-- Verify `docker compose up` end-to-end once Docker Desktop is running
-  locally (build the `droply-api` image, confirm it talks to the
-  `postgres` service, confirm migrations run in-container).
 - Replace placeholder PWA icon art with real Droply branding.
 - Push to a GitHub remote and confirm the CI workflow actually runs green
   in Actions (only validated locally so far).

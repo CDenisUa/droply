@@ -26,7 +26,7 @@ Prerequisites: Rust (stable), Node.js 22+, Docker (for Postgres).
 cp .env.example .env               # backend env vars
 cp apps/web/.env.example apps/web/.env
 
-docker compose up -d postgres      # Postgres on localhost:5432
+docker compose up -d postgres      # Postgres on localhost:5434 (5432/5433 are used by other local projects)
 
 cargo run -p droply-api            # API on :8080 (reads .env vars from your shell/export)
 
