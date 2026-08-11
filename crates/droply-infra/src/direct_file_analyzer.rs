@@ -4,11 +4,12 @@ use std::time::Duration;
 use async_trait::async_trait;
 use droply_application::{MediaSourceAnalyzer, UrlValidator};
 use droply_domain::{derive_filename, DroplyError, MediaSourceResult, SourceType};
-use reqwest::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, LOCATION};
+use reqwest::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE};
 use reqwest::{Client, Method};
 use url::Url;
 
-const MAX_REDIRECTS: u8 = 5;
+use crate::http::request_with_redirects;
+
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Bounds header-only requests (HEAD, and the GET fallback whose body we
 /// never read) — not a bound on an actual file download, which doesn't
@@ -44,35 +45,7 @@ impl DirectFileAnalyzer {
         method: Method,
         start_url: Url,
     ) -> Result<reqwest::Response, DroplyError> {
-        let mut url = start_url;
-
-        for _ in 0..=MAX_REDIRECTS {
-            let response = self
-                .client
-                .request(method.clone(), url.clone())
-                .send()
-                .await
-                .map_err(|_| DroplyError::SourceUnavailable)?;
-
-            if !response.status().is_redirection() {
-                return Ok(response);
-            }
-
-            let location = response
-                .headers()
-                .get(LOCATION)
-                .and_then(|value| value.to_str().ok())
-                .ok_or(DroplyError::SourceUnavailable)?;
-
-            let next_url = url
-                .join(location)
-                .map_err(|_| DroplyError::SourceUnavailable)?;
-
-            self.validator.validate(&next_url).await?;
-            url = next_url;
-        }
-
-        Err(DroplyError::SourceUnavailable)
+        request_with_redirects(&self.client, self.validator.as_ref(), method, start_url).await
     }
 }
 

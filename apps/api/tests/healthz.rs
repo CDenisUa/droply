@@ -20,7 +20,14 @@ async fn healthz_returns_ok_without_a_reachable_database() {
         .connect_lazy("postgres://user:pass@127.0.0.1:1/db")
         .expect("connect_lazy must not perform I/O");
 
-    let app = app(pool, cors_layer_from_env(None), support::empty_resolver());
+    let app = app(
+        pool,
+        cors_layer_from_env(None),
+        support::dependencies(
+            support::empty_resolver(),
+            support::empty_download_strategy_resolver(),
+        ),
+    );
 
     let response = app
         .oneshot(
