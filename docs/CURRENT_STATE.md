@@ -61,22 +61,43 @@
   100.64.0.0/10 (covers Alibaba Cloud's 100.100.100.200 metadata endpoint),
   IPv6 loopback/unique-local/link-local. Resolves DNS and checks **every**
   returned address, not just the first (defends against DNS rebinding).
-  9 unit tests, all IP-literal based (no live DNS in tests, so they're not
-  flaky/slow). **Not yet wired into any HTTP call** — no analyzer or
-  download strategy exists yet to call it, and redirect-hop re-validation
-  is deferred to whichever Phase 1 piece first builds an HTTP client
-  (`DirectFileAnalyzer`, next).
+  **Now wired in**: `DirectFileAnalyzer` validates the initial URL and
+  re-validates every redirect hop before following it.
+- **`MediaSourceAnalyzer` trait + `MediaSourceResolver`** (`droply-application`)
+  — tries registered analyzers in order, first match wins. Currently one
+  analyzer registered: `DirectFileAnalyzer`.
+- **`DirectFileAnalyzer`** (`droply-infra`) — HEAD first, GET fallback (body
+  never read) when HEAD isn't supported; manual redirect loop (max 5 hops,
+  each re-validated); declines `.m3u8`/`.mpd` paths so they get an honest
+  `UnsupportedSource` instead of being mis-labeled as a direct file (real
+  `HlsAnalyzer`/`DashAnalyzer` land at Phase 4/5). Extracts
+  Content-Type/Content-Length/Content-Disposition; filename derivation
+  (`derive_filename`, `droply-domain`) prefers Content-Disposition over the
+  URL path, sanitizes path separators/`..`/control chars/length.
+- **`POST /api/sources/analyze`** — parses and delegates to the resolver;
+  `DroplyError` variants map to HTTP status via `ApiError`
+  (`InvalidUrl`→400, `UnsupportedSource`→422, `SourceUnavailable`→502,
+  `ProtectedContent`→403, ...).
+- **Manually verified against the real internet** (not just mocks): a real
+  `raw.githubusercontent.com` URL analyzes correctly over real DNS+TLS;
+  `169.254.169.254` (cloud metadata) and `localhost` are both correctly
+  rejected with 400 through the live server.
+- 24 new tests this slice (14 domain filename tests, 2 resolver tests, 6
+  analyzer tests via `wiremock`, 4 endpoint integration tests, on top of the
+  existing 9 `UrlValidator` tests) — all fast/deterministic, no live DNS or
+  real network calls in the automated suite (only in the one-off manual
+  check above).
 
 ## Explicitly not built yet (by design — see AGENTS.md rule 15)
 
-- `droply-application` has only `UrlValidator` so far — `MediaSourceAnalyzer`,
-  `DownloadStrategy`, etc. land with the rest of Phase 1.
-- No `Download`/`MediaSource`/`MediaVariant`/`LibraryItem` persistence — no
-  DB schema exists yet.
-- No `/api/sources/analyze`, `/api/downloads/*` routes.
+- No `Download`/`LibraryItem`/`DownloadJob` persistence — no DB schema
+  exists yet (Phase 1c, next).
+- No `/api/downloads/*` routes — nothing to actually download files yet
+  (Phase 1d).
 - No IndexedDB / library / player / file-manager frontend features.
 - No SSE progress stream (ADR 0004 — planned, not implemented).
 - `droply-media` crate doesn't exist (FFmpeg lands at Phase 4).
+- `DownloadStrategy` trait doesn't exist yet (Phase 1d).
 - No GitHub remote — repo is local-only.
 
 ## Known follow-ups
@@ -87,8 +108,7 @@
 
 ## Next planned work
 
-Phase 1 — Direct Downloader (see `../Droply-Architecture.md` §40, Phase 1):
-`UrlValidator` (SSRF protection, doc §27), `DirectFileAnalyzer`
-(`MediaSourceAnalyzer` impl), `POST /api/sources/analyze`, `Download`
-entity + Postgres schema, `DirectFileDownloadStrategy` (streaming, doc §28),
-frontend Analyze feature wired to the (currently disabled) Home page form.
+Phase 1c: `Download` entity + Postgres schema/migration. Phase 1d:
+`DownloadStrategy` trait + `DirectFileDownloadStrategy` (streaming,
+cancellable, doc §28) + `/api/downloads` routes. Phase 1e: frontend Analyze
+feature wired to the (currently disabled) Home page form.

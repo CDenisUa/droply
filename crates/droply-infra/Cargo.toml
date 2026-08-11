@@ -16,3 +16,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
+reqwest = { workspace = true }
+
+[dev-dependencies]
+wiremock = "0.6"

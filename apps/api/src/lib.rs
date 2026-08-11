@@ -1,53 +1,36 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
-use serde_json::json;
+use axum::Router;
+use droply_application::MediaSourceResolver;
 use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-/// Shared application state handed to route handlers.
-#[derive(Clone)]
-pub struct AppState {
-    pub pool: PgPool,
-}
+pub mod error;
+pub mod routes;
+pub mod state;
 
-/// Liveness endpoint: the process is up and serving requests. Deliberately
-/// has no dependency on the database or any other external system — a
-/// load balancer/orchestrator uses this to decide whether to keep routing
-/// traffic to this instance at all.
-async fn healthz() -> impl IntoResponse {
-    (StatusCode::OK, Json(json!({ "status": "ok" })))
-}
+pub use state::AppState;
 
-/// Readiness endpoint: the process is up *and* its dependencies (currently
-/// just Postgres) are reachable. Returns 503 rather than panicking when the
-/// database is unreachable, since "database is down" is an expected,
-/// recoverable operating condition, not a bug.
-async fn readyz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match droply_infra::ping(&state.pool).await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(json!({ "status": "ok", "database": "ok" })),
-        ),
-        Err(err) => {
-            tracing::warn!(error = %err, "readiness check failed: database unreachable");
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "status": "unavailable", "database": "unreachable" })),
-            )
-        }
-    }
-}
-
-/// Build the full application router. CORS origins are passed in explicitly
-/// (read from `CORS_ALLOWED_ORIGINS` by the caller) rather than defaulting
-/// to `AllowAnyOrigin`, per `docs/architecture.md` §55.
-pub fn app(pool: PgPool, cors: CorsLayer) -> Router {
-    let state = Arc::new(AppState { pool });
+/// Build the full application router given already-constructed
+/// dependencies. Deliberately takes a `MediaSourceResolver` rather than
+/// building one itself — *which* analyzers and *which* `UrlValidator` to
+/// use is a composition-root decision (see `main.rs`), not something this
+/// router-builder should hardcode. That also makes it trivial for tests to
+/// swap in a resolver backed by a permissive validator instead of the real
+/// SSRF-checking one.
+///
+/// CORS origins are passed in explicitly (read from `CORS_ALLOWED_ORIGINS`
+/// by the caller) rather than defaulting to `AllowAnyOrigin`, per
+/// `docs/architecture.md` §55.
+pub fn app(pool: PgPool, cors: CorsLayer, source_resolver: Arc<MediaSourceResolver>) -> Router {
+    let state = Arc::new(AppState {
+        pool,
+        source_resolver,
+    });
 
     Router::new()
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
+        .merge(routes::health::router())
+        .merge(routes::sources::router())
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

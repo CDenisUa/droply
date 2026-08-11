@@ -44,8 +44,21 @@ only created once a phase actually needs them — Phase 0 only populated
   - `GET /healthz` — liveness, no DB dependency, always 200 while the
     process is up.
   - `GET /readyz` — readiness, pings Postgres, 200 if reachable else 503.
-  - Everything else in the original doc's §26 API section (`/api/sources/
-    analyze`, `/api/downloads`, etc.) is Phase 1+, not built yet.
+  - `POST /api/sources/analyze` — `{ "url": "..." }` in, `MediaSourceResult`
+    out (`sourceType`, `title`, `mimeType`, `sizeBytes`, `durationSeconds`).
+    Currently only resolves `DirectFileAnalyzer`. Errors map through
+    `ApiError` (`apps/api/src/error.rs`): `InvalidUrl`→400,
+    `UnsupportedSource`→422, `SourceUnavailable`→502, `ProtectedContent`→403.
+  - `/api/downloads/*` (create/status/cancel/retry/content) — Phase 1c/1d,
+    not built yet.
+- **Source resolution** (doc §11): `MediaSourceAnalyzer` trait +
+  `MediaSourceResolver` in `droply-application`. Analyzers are tried in
+  registration order; `main.rs` (the composition root) decides which
+  analyzers and which `UrlValidator` implementation are actually wired —
+  `apps/api`'s `app()` function takes an already-built
+  `Arc<MediaSourceResolver>` rather than constructing one, so tests can
+  inject a resolver backed by a permissive validator instead of the real
+  SSRF-checking one (see `apps/api/tests/support/mod.rs`).
 
 ## Frontend
 

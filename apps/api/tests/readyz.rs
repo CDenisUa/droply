@@ -8,6 +8,8 @@ use droply_api::{app, cors_layer_from_env};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+mod support;
+
 /// Requires a real, reachable Postgres — run `docker compose up -d postgres`
 /// locally and set `DATABASE_URL`, or rely on CI's postgres service.
 /// `cargo test -- --include-ignored` to run it.
@@ -20,7 +22,7 @@ async fn readyz_returns_ok_when_database_is_reachable() {
         .await
         .expect("failed to connect to DATABASE_URL");
 
-    let app = app(pool, cors_layer_from_env(None));
+    let app = app(pool, cors_layer_from_env(None), support::empty_resolver());
 
     let response = app
         .oneshot(
@@ -50,7 +52,7 @@ async fn readyz_returns_service_unavailable_when_database_is_unreachable() {
         .connect_lazy("postgres://user:pass@127.0.0.1:1/db")
         .expect("connect_lazy must not perform I/O");
 
-    let app = app(pool, cors_layer_from_env(None));
+    let app = app(pool, cors_layer_from_env(None), support::empty_resolver());
 
     let response = app
         .oneshot(
