@@ -13,6 +13,6 @@ droply-domain = { workspace = true }
 droply-application = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
 tokio = { workspace = true }
+async-trait = { workspace = true }
+url = { workspace = true }

@@ -3,5 +3,7 @@
 //! ping) exists so far — see `docs/CURRENT_STATE.md`.
 
 pub mod postgres;
+pub mod url_validator;
 
 pub use postgres::{create_pool, create_pool_with_timeout, ping};
+pub use url_validator::SsrfSafeUrlValidator;

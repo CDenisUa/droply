@@ -10,3 +10,5 @@ workspace = true
 
 [dependencies]
 droply-domain = { workspace = true }
+async-trait = { workspace = true }
+url = { workspace = true }
