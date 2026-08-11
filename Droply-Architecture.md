@@ -4,6 +4,17 @@
 > Updated: 2026-08-11  
 > Status: Initial architecture for Claude Code / Codex development
 
+> ⚠️ **Vision archive — not the daily source of truth.** This is the original
+> product/architecture intent. It describes an ASP.NET Core / EF Core /
+> SignalR backend; the project actually builds on **Rust (Axum + SQLx)**
+> instead — see [`docs/DECISIONS.md`](docs/DECISIONS.md) ADR 0001-0004 for
+> why and what changed. For what's actually built right now, read
+> [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). For the day-to-day
+> working architecture doc, read [`docs/architecture.md`](docs/architecture.md).
+> Where this document and the code disagree, the code (and the docs above)
+> win — this file stays as the original product vision, not a spec to patch
+> line-by-line.
+
 ---
 
 # 1. Product Vision
