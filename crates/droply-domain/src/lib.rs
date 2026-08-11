@@ -3,6 +3,8 @@
 
 pub mod download;
 pub mod error;
+pub mod media_source;
 
 pub use download::DownloadStatus;
 pub use error::DroplyError;
+pub use media_source::{derive_filename, MediaSourceResult, SourceType};

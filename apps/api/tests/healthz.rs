@@ -9,6 +9,8 @@ use http_body_util::BodyExt;
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 
+mod support;
+
 /// `/healthz` must respond without touching the database at all, so this
 /// test uses a lazy pool that never actually connects — proving the
 /// liveness endpoint has no hidden DB dependency.
@@ -18,7 +20,7 @@ async fn healthz_returns_ok_without_a_reachable_database() {
         .connect_lazy("postgres://user:pass@127.0.0.1:1/db")
         .expect("connect_lazy must not perform I/O");
 
-    let app = app(pool, cors_layer_from_env(None));
+    let app = app(pool, cors_layer_from_env(None), support::empty_resolver());
 
     let response = app
         .oneshot(

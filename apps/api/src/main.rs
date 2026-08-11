@@ -1,6 +1,9 @@
 use std::env;
+use std::sync::Arc;
 
 use droply_api::{app, cors_layer_from_env};
+use droply_application::{MediaSourceAnalyzer, MediaSourceResolver, UrlValidator};
+use droply_infra::{DirectFileAnalyzer, SsrfSafeUrlValidator};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,7 +26,16 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8080);
 
-    let router = app(pool, cors);
+    // Composition root: decides which UrlValidator and which
+    // MediaSourceAnalyzers are actually wired in. More specific analyzers
+    // (HLS, DASH) must be registered before DirectFileAnalyzer's catch-all
+    // once they exist — see docs/architecture.md §11.
+    let url_validator: Arc<dyn UrlValidator> = Arc::new(SsrfSafeUrlValidator::new());
+    let analyzers: Vec<Arc<dyn MediaSourceAnalyzer>> =
+        vec![Arc::new(DirectFileAnalyzer::new(url_validator)?)];
+    let source_resolver = Arc::new(MediaSourceResolver::new(analyzers));
+
+    let router = app(pool, cors, source_resolver);
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!(port, "droply-api listening");
 
