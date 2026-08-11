@@ -12,6 +12,8 @@ workspace = true
 droply-domain = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

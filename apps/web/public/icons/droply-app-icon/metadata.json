@@ -1,0 +1,11 @@
+{
+  "name": "droply-app-icon",
+  "type": "pwa-app-icon",
+  "source": "user-upload",
+  "sourceDimensions": [1254, 1254],
+  "hasTransparency": false,
+  "recommendedUsage": ["pwa-manifest", "apple-touch-icon", "favicon"],
+  "sizes": [48, 180, 192, 512, 1024],
+  "primaryFormat": "webp",
+  "pwaFormat": "png"
+}

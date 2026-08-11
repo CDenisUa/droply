@@ -35,9 +35,16 @@
   (Phase 1 wires it up) + live backend connectivity badge polling
   `/readyz`.
 - **`ChepioTechFooter`** — present, dark-theme variant, tested.
-- **PWA installability** — manifest with unique `id`, icon set (192/512/
-  512-maskable, **placeholder art**), Apple meta tags in `index.html`.
-  Not yet tested on a physical iOS device.
+- **PWA installability** — manifest with unique `id`, real branded icon set
+  (`apps/web/public/icons/droply-app-icon/`: 48/180/192/512 + maskable-512,
+  sourced from a user-uploaded 1254×1254 image), Apple meta tags in
+  `index.html`. The maskable variant is a distinct, separately-padded file
+  (icon content scaled to ~80% and centered) — the auto-generated asset
+  pipeline initially emitted the same image for both `any` and `maskable`
+  purpose entries, which is wrong (maskable needs safe-zone padding so
+  Android's circular/squircle crop doesn't clip the artwork); regenerated
+  it correctly with ImageMagick before committing. Not yet tested on a
+  physical iOS device.
 - **Tests, all green:**
   - Rust: `cargo test --workspace` — 8 passed, 1 ignored (DB-gated).
   - Frontend unit: `npx vitest run` — 8 passed (3 files).
@@ -88,12 +95,31 @@
   real network calls in the automated suite (only in the one-off manual
   check above).
 
+- **`Download` entity + Postgres persistence** (Phase 1c) — `Download`
+  struct in `droply-domain` (id, source_url, file_name, media_type, status,
+  bytes_downloaded, total_bytes, created_at/started_at/completed_at, error)
+  with domain methods (`transition`, `record_progress`, `fail`) that keep
+  timestamps consistent — `started_at` is set once on first entry to
+  `Downloading` (resuming from `Paused` doesn't reset it), `completed_at`
+  on reaching any terminal status. `DownloadStatus::as_str`/`parse` give a
+  stable TEXT-column mapping (not a Postgres native enum, so a new status
+  never needs a migration). `DownloadRepository` trait
+  (`droply-application`: create/find_by_id/update/list_recent — deliberately
+  not a generic `Repository<T>`, see AGENTS.md rule 16) implemented by
+  `PostgresDownloadRepository` (`droply-infra`) using **runtime-checked**
+  `sqlx::query_as` + `#[derive(FromRow)]`, not the `query!`/`query_as!`
+  macros — those need a live, already-migrated DB at *compile* time, which
+  would break `cargo build` for anyone without Postgres running.
+  `migrations/0001_create_downloads.sql` adds the table + two indexes
+  (status, created_at DESC for the History view). 8 new tests (4 pure
+  domain, 4 DB-gated repository round-trip tests) — the repository tests
+  were run against the live Docker Postgres and confirmed passing, not just
+  written.
+
 ## Explicitly not built yet (by design — see AGENTS.md rule 15)
 
-- No `Download`/`LibraryItem`/`DownloadJob` persistence — no DB schema
-  exists yet (Phase 1c, next).
-- No `/api/downloads/*` routes — nothing to actually download files yet
-  (Phase 1d).
+- No `/api/downloads/*` routes — nothing wires the repository to HTTP yet,
+  and nothing actually downloads a file (Phase 1d).
 - No IndexedDB / library / player / file-manager frontend features.
 - No SSE progress stream (ADR 0004 — planned, not implemented).
 - `droply-media` crate doesn't exist (FFmpeg lands at Phase 4).
@@ -102,13 +128,13 @@
 
 ## Known follow-ups
 
-- Replace placeholder PWA icon art with real Droply branding.
 - Push to a GitHub remote and confirm the CI workflow actually runs green
   in Actions (only validated locally so far).
 
 ## Next planned work
 
-Phase 1c: `Download` entity + Postgres schema/migration. Phase 1d:
-`DownloadStrategy` trait + `DirectFileDownloadStrategy` (streaming,
-cancellable, doc §28) + `/api/downloads` routes. Phase 1e: frontend Analyze
-feature wired to the (currently disabled) Home page form.
+Phase 1d: `DownloadStrategy` trait + `DirectFileDownloadStrategy`
+(streaming, cancellable, doc §28) + `/api/downloads` routes (create,
+status, cancel, retry, content with Range support), wiring
+`DownloadRepository` into the API. Phase 1e: frontend Analyze feature wired
+to the (currently disabled) Home page form.
