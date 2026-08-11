@@ -17,6 +17,9 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 wiremock = "0.6"

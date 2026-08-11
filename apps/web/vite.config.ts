@@ -11,7 +11,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
+      includeAssets: [
+        'icons/droply-app-icon/droply-favicon-48.png',
+        'icons/droply-app-icon/droply-apple-touch-icon-180.png',
+      ],
       manifest: {
         id: '/droply',
         name: 'Droply — Download Manager & Media Library',
@@ -25,10 +28,20 @@ export default defineConfig({
         scope: '/',
         start_url: '/',
         icons: [
-          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           {
-            src: 'icons/icon-512-maskable.png',
+            src: 'icons/droply-app-icon/droply-app-icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icons/droply-app-icon/droply-app-icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icons/droply-app-icon/droply-app-icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
@@ -36,7 +49,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,ico,woff2}'],
+        globIgnores: ['icons/droply-app-icon/*.png'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
       },

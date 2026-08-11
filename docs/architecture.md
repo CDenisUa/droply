@@ -79,9 +79,9 @@ only created once a phase actually needs them — Phase 0 only populated
 
 - Manifest `id: "/droply"` set explicitly (global rule: prevents iOS
   conflating this app's identity with another PWA at the same origin).
-- Icons are placeholder art (`apps/web/public/icons/*`, a simple
-  monogram/arrow mark) generated programmatically — not final brand design,
-  swap out when real icon art exists.
+- Icons: real branded art in `apps/web/public/icons/droply-app-icon/`
+  (48/180/192/512 + a separately-padded maskable-512, see
+  `metadata.json` in that folder for source provenance).
 - `navigateFallback: 'index.html'` for SPA offline navigation, app-shell
   precaching only (no large media in the SW cache — doc §31/§32).
 
