@@ -1,0 +1,8 @@
+//! Pure domain types for Droply: no I/O, no async runtime, no framework
+//! dependencies. See `docs/architecture.md` for the layering rules.
+
+pub mod download;
+pub mod error;
+
+pub use download::DownloadStatus;
+pub use error::DroplyError;

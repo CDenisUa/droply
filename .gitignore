@@ -23,6 +23,11 @@ dist-ssr/
 # OS
 .DS_Store
 
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
 # Docker
 docker/data/
 
