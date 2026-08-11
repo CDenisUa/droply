@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use axum::routing::{get, post};
@@ -115,6 +115,41 @@ async fn find_or_404(state: &AppState, id: Uuid) -> Result<Download, ApiError> {
         }))
 }
 
+const DEFAULT_LIST_LIMIT: i64 = 50;
+const MAX_LIST_LIMIT: i64 = 200;
+
+#[derive(Debug, Deserialize)]
+pub struct ListDownloadsQuery {
+    limit: Option<i64>,
+}
+
+/// `GET /api/downloads` — most recent downloads first, backs the doc's
+/// "History"/"Downloads" view (§2). Not in the original doc's §26 API
+/// list (which only names single-resource endpoints) but needed for the
+/// frontend to show more than the one download it just created.
+async fn list(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListDownloadsQuery>,
+) -> Result<Json<Vec<DownloadResponse>>, ApiError> {
+    let limit = query
+        .limit
+        .unwrap_or(DEFAULT_LIST_LIMIT)
+        .clamp(1, MAX_LIST_LIMIT);
+
+    let downloads = state
+        .download_repository
+        .list_recent(limit)
+        .await
+        .map_err(|err| {
+            tracing::error!(error = %err, "failed to list downloads");
+            ApiError(DroplyError::ProcessingFailed {
+                reason: "could not list downloads".to_string(),
+            })
+        })?;
+
+    Ok(Json(downloads.iter().map(DownloadResponse::from).collect()))
+}
+
 /// `GET /api/downloads/{id}` — current status/progress.
 async fn status(
     State(state): State<Arc<AppState>>,
@@ -218,7 +253,7 @@ async fn content(
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/downloads", post(create))
+        .route("/api/downloads", post(create).get(list))
         .route("/api/downloads/:id", get(status))
         .route("/api/downloads/:id/cancel", post(cancel))
         .route("/api/downloads/:id/retry", post(retry))

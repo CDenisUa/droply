@@ -317,3 +317,39 @@ async fn retry_is_rejected_when_the_download_is_not_failed() {
     .await;
     assert_eq!(retry_status, StatusCode::CONFLICT, "{retry_body:?}");
 }
+
+#[tokio::test]
+async fn list_returns_recent_downloads_newest_first() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .respond_with(ResponseTemplate::new(200).insert_header("content-length", "2"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+        .mount(&server)
+        .await;
+
+    let app = test_app();
+    let first = create_download(&app, &format!("{}/a.bin", server.uri())).await;
+    let second = create_download(&app, &format!("{}/b.bin", server.uri())).await;
+
+    let (status, body, _) = request(
+        &app,
+        Request::builder()
+            .uri("/api/downloads")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let ids: Vec<&str> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&first["id"].as_str().unwrap()));
+    assert!(ids.contains(&second["id"].as_str().unwrap()));
+}

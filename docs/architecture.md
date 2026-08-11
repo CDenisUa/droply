@@ -52,6 +52,9 @@ only created once a phase actually needs them — Phase 0 only populated
   - `POST /api/downloads` — `{ "url": "..." }` in (not doc §26's literal
     `{ sourceId, variantId }` — ADR 0006), creates a `Download` row and
     starts executing it in the background, 202 + `Download` JSON out.
+  - `GET /api/downloads` — most recent first (`?limit=`, default 50, max
+    200). Not in doc §26's literal list (which only names single-resource
+    endpoints) but needed to back a Downloads/History view.
   - `GET /api/downloads/:id` — current status/progress.
   - `POST /api/downloads/:id/cancel` — signals the running task; response
     reflects state *before* the task observes the signal and persists
