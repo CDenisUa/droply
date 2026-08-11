@@ -34,6 +34,7 @@ impl IntoResponse for ApiError {
             DroplyError::InvalidStatusTransition { .. } => {
                 (StatusCode::CONFLICT, "invalid_status_transition")
             }
+            DroplyError::NotFound { .. } => (StatusCode::NOT_FOUND, "not_found"),
         };
 
         (

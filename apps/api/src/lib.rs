@@ -1,36 +1,49 @@
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
-use droply_application::MediaSourceResolver;
+use droply_application::{DownloadRepository, DownloadStrategyResolver, MediaSourceResolver};
 use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
+pub mod download_runner;
 pub mod error;
 pub mod routes;
 pub mod state;
 
 pub use state::AppState;
 
+/// Everything `app()` needs beyond the DB pool and CORS policy — bundled so
+/// the function signature doesn't grow a parameter per feature. *Which*
+/// concrete analyzers/strategies/validator to use is a composition-root
+/// decision (see `main.rs`), not something this router-builder should
+/// hardcode — that also makes it trivial for tests to swap in dependencies
+/// backed by a permissive validator instead of the real SSRF-checking one.
+pub struct AppDependencies {
+    pub source_resolver: Arc<MediaSourceResolver>,
+    pub download_repository: Arc<dyn DownloadRepository>,
+    pub download_strategy_resolver: Arc<DownloadStrategyResolver>,
+    pub temp_storage_path: PathBuf,
+}
+
 /// Build the full application router given already-constructed
-/// dependencies. Deliberately takes a `MediaSourceResolver` rather than
-/// building one itself — *which* analyzers and *which* `UrlValidator` to
-/// use is a composition-root decision (see `main.rs`), not something this
-/// router-builder should hardcode. That also makes it trivial for tests to
-/// swap in a resolver backed by a permissive validator instead of the real
-/// SSRF-checking one.
-///
-/// CORS origins are passed in explicitly (read from `CORS_ALLOWED_ORIGINS`
-/// by the caller) rather than defaulting to `AllowAnyOrigin`, per
-/// `docs/architecture.md` §55.
-pub fn app(pool: PgPool, cors: CorsLayer, source_resolver: Arc<MediaSourceResolver>) -> Router {
+/// dependencies. CORS origins are passed in explicitly (read from
+/// `CORS_ALLOWED_ORIGINS` by the caller) rather than defaulting to
+/// `AllowAnyOrigin`, per `docs/architecture.md` §55.
+pub fn app(pool: PgPool, cors: CorsLayer, deps: AppDependencies) -> Router {
     let state = Arc::new(AppState {
         pool,
-        source_resolver,
+        source_resolver: deps.source_resolver,
+        download_repository: deps.download_repository,
+        download_strategy_resolver: deps.download_strategy_resolver,
+        active_cancellations: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        temp_storage_path: deps.temp_storage_path,
     });
 
     Router::new()
         .merge(routes::health::router())
         .merge(routes::sources::router())
+        .merge(routes::downloads::router())
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

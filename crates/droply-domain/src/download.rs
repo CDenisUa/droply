@@ -165,6 +165,17 @@ impl Download {
         self.error = Some(reason.into());
         Ok(())
     }
+
+    /// Doc §34: `Failed -> Retry -> Queued`. There's no partial-resume
+    /// support yet (that's doc §6's "pause/resume where technically
+    /// supported", Phase 6) — a retry always restarts from zero, so the
+    /// stale error and byte count from the failed attempt are cleared.
+    pub fn retry(&mut self) -> Result<(), DroplyError> {
+        self.transition(DownloadStatus::Queued)?;
+        self.bytes_downloaded = 0;
+        self.error = None;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -353,6 +364,29 @@ mod tests {
             let mut download = sample();
             download.record_progress(512);
             assert_eq!(download.bytes_downloaded, 512);
+        }
+
+        #[test]
+        fn retry_moves_a_failed_download_to_queued_and_clears_error_and_progress() {
+            let mut download = sample();
+            download.transition(DownloadStatus::Analyzing).unwrap();
+            download.transition(DownloadStatus::Ready).unwrap();
+            download.transition(DownloadStatus::Queued).unwrap();
+            download.transition(DownloadStatus::Downloading).unwrap();
+            download.record_progress(999);
+            download.fail("connection reset").unwrap();
+
+            download.retry().unwrap();
+
+            assert_eq!(download.status, DownloadStatus::Queued);
+            assert_eq!(download.bytes_downloaded, 0);
+            assert!(download.error.is_none());
+        }
+
+        #[test]
+        fn retry_is_rejected_when_not_currently_failed() {
+            let mut download = sample();
+            assert!(download.retry().is_err());
         }
     }
 }

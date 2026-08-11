@@ -35,4 +35,7 @@ pub enum DroplyError {
         from: DownloadStatus,
         to: DownloadStatus,
     },
+
+    #[error("{resource} not found")]
+    NotFound { resource: String },
 }

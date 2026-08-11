@@ -49,16 +49,46 @@ only created once a phase actually needs them — Phase 0 only populated
     Currently only resolves `DirectFileAnalyzer`. Errors map through
     `ApiError` (`apps/api/src/error.rs`): `InvalidUrl`→400,
     `UnsupportedSource`→422, `SourceUnavailable`→502, `ProtectedContent`→403.
-  - `/api/downloads/*` (create/status/cancel/retry/content) — Phase 1c/1d,
-    not built yet.
+  - `POST /api/downloads` — `{ "url": "..." }` in (not doc §26's literal
+    `{ sourceId, variantId }` — ADR 0006), creates a `Download` row and
+    starts executing it in the background, 202 + `Download` JSON out.
+  - `GET /api/downloads/:id` — current status/progress.
+  - `POST /api/downloads/:id/cancel` — signals the running task; response
+    reflects state *before* the task observes the signal and persists
+    `Cancelled` (still `Downloading`, typically) — cancellation is
+    fire-and-forget from the handler's point of view, not synchronous.
+  - `POST /api/downloads/:id/retry` — only from `Failed`; re-resolves the
+    source (ADR 0006) and restarts from zero (no partial-resume yet).
+  - `GET /api/downloads/:id/content` — only once `status == Completed`;
+    single-range `Range` support (RFC 7233 subset — no multi-range).
 - **Source resolution** (doc §11): `MediaSourceAnalyzer` trait +
   `MediaSourceResolver` in `droply-application`. Analyzers are tried in
   registration order; `main.rs` (the composition root) decides which
   analyzers and which `UrlValidator` implementation are actually wired —
-  `apps/api`'s `app()` function takes an already-built
-  `Arc<MediaSourceResolver>` rather than constructing one, so tests can
-  inject a resolver backed by a permissive validator instead of the real
-  SSRF-checking one (see `apps/api/tests/support/mod.rs`).
+  `apps/api`'s `app()` function takes an already-built `AppDependencies`
+  bundle rather than constructing one, so tests can inject dependencies
+  backed by a permissive validator instead of the real SSRF-checking one
+  (see `apps/api/tests/support/mod.rs`).
+- **Download execution** (doc §12, §34): `DownloadStrategy` trait +
+  `DownloadStrategyResolver` in `droply-application` (mirrors the analyzer
+  resolver). `DirectFileDownloadStrategy` (`droply-infra`) streams straight
+  to a temp file (`AppState::temp_storage_path`, `TEMP_STORAGE_PATH` env
+  var), reporting progress via a shared `AtomicU64` rather than a callback
+  — decouples "how fast bytes arrive" from "how often we persist progress".
+  `apps/api/src/download_runner.rs` is the actual orchestrator: spawns a
+  `tokio::spawn` task per download, races the strategy's execution future
+  against a periodic progress-flush loop (`tokio::select!`), and owns every
+  `DownloadStatus` transition from `Queued` onward. Cancellation is a
+  `tokio_util::sync::CancellationToken` per active download, tracked in
+  `AppState::active_cancellations` (a `Mutex<HashMap<Uuid, _>>` — traffic is
+  low enough that this doesn't need anything fancier).
+  **No formal job queue / concurrency limiting yet** — every download spawns
+  its own task immediately. Doc §24/§35's `IJobQueue` + concurrency-limit-2
+  is explicitly Phase 6 scope ("Advanced Download Manager"), not Phase 1.
+  **No automatic temp-file cleanup yet** — files accumulate in
+  `TEMP_STORAGE_PATH` until manually cleared; a cleanup sweep is a known
+  follow-up, not implemented (deleting on every serve would break multi-hop
+  Range requests like video seeking).
 
 ## Frontend
 

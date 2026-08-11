@@ -83,3 +83,42 @@ shared Rust→WASM validation crate or ffmpeg.wasm client-side tooling.
 **Why:** No concrete use case yet. Revisit only when one appears (e.g. if
 duplicate URL-validation logic between frontend and backend becomes a real
 maintenance cost, or Phase 7 media tools want in-browser processing).
+
+---
+
+## 0006 — `POST /api/downloads` takes `{ url }`, not `{ sourceId, variantId }`
+
+- **Status:** accepted
+- **Date:** 2026-08-11
+
+The architecture doc's §26 API section specs `POST /api/downloads` as
+`{ "sourceId": "...", "variantId": "..." }` — referencing a previously
+analyzed `MediaSource` (and one of its `MediaVariant`s) that was persisted
+server-side with an ID the client got back from `/api/sources/analyze`.
+
+Phase 1's `/api/sources/analyze` (ADR-adjacent to 0001-0004, built in
+Phase 1b) doesn't persist `MediaSourceResult` or assign it an ID — it's a
+stateless call. A direct file also only ever has one variant (itself), so
+there's nothing to select between yet; variant selection only becomes real
+once HLS/DASH analyzers exist (Phase 4/5) and a source can resolve to
+multiple quality/format options.
+
+**Decision:** `POST /api/downloads` takes `{ "url": "..." }` directly and
+re-resolves the source (calling the same `MediaSourceResolver` that backs
+`/analyze`) to get the filename/mime/size needed to create the `Download`
+row. `POST /api/downloads/{id}/retry` does the same re-resolution (rather
+than storing `SourceType` on `Download`) to pick the right
+`DownloadStrategy` again.
+
+**Why:** Building server-side `MediaSource` persistence with IDs purely to
+match the doc's literal request shape, before there's a second variant to
+ever select between, is exactly the kind of speculative abstraction
+AGENTS.md rule 15 argues against. Re-analyzing costs one extra HTTP
+round-trip to the source per download/retry — acceptable for Phase 1's
+scale.
+
+**Consequence:** When HLS/DASH variant selection lands (Phase 4/5), this
+likely needs revisiting — either `/analyze` starts persisting
+`MediaSource`+`MediaVariant` rows with IDs, or `/api/downloads` grows an
+optional `variantId` alongside `url`. Not decided yet — flagged here so
+it isn't a surprise later.

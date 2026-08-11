@@ -17,8 +17,8 @@
   `create_pool_with_timeout`, `ping`), bounded to 5 connections, 10s connect
   timeout.
 - **Migrations pipeline wired** (`sqlx::migrate!` runs on API startup from
-  `/migrations`) — directory exists but is **empty**, no schema yet (nothing
-  to persist until Phase 1's `Download` entity).
+  `/migrations`) — `0001_create_downloads.sql` adds the `downloads` table
+  (see Phase 1c below).
 - **Docker Compose** (`postgres` + `droply-api` services) and
   `docker/api.Dockerfile` (multi-stage, ~small runtime image) — **verified
   end-to-end**: `docker compose up -d --build` builds the API image, starts
@@ -116,25 +116,70 @@
   were run against the live Docker Postgres and confirmed passing, not just
   written.
 
+- **Streaming downloads end-to-end** (Phase 1d) — `DownloadStrategy` trait +
+  `DownloadStrategyResolver` (`droply-application`, mirrors the analyzer
+  resolver). `DirectFileDownloadStrategy` (`droply-infra`) streams a direct
+  file straight to a temp file, chunk by chunk, never buffering the whole
+  thing (AGENTS.md rule 7-8); shares the `request_with_redirects` helper
+  with `DirectFileAnalyzer` (extracted to `droply-infra::http`, so the
+  SSRF-relevant redirect-revalidation logic exists in exactly one place).
+  `apps/api/src/download_runner.rs` orchestrates: spawns a `tokio` task per
+  download, walks `DownloadStatus` from `Pending`/`Queued` through to
+  `Downloading` (`advance_to_downloading`, handles both a fresh create and
+  a post-retry `Queued` start), races the strategy's execution against a
+  500ms progress-flush loop, and persists the final `Completed`/
+  `Cancelled`/`Failed` state. Cancellation: a `CancellationToken` per
+  active download in `AppState::active_cancellations`
+  (`Mutex<HashMap<Uuid, _>>`).
+  **Endpoints:** `POST /api/downloads` (`{url}`, not doc's `{sourceId,
+  variantId}` — see ADR 0006), `GET /api/downloads/:id`, `POST
+  /api/downloads/:id/cancel`, `POST /api/downloads/:id/retry` (only from
+  `Failed`, restarts from zero), `GET /api/downloads/:id/content`
+  (single-range `Range` support, only once `Completed`).
+  Fixed a real bug caught while writing the first content test: "download
+  not found" was mapped to `SourceUnavailable` (502) instead of a proper
+  404 — added a `DroplyError::NotFound` variant rather than reusing an
+  unrelated error for the wrong HTTP status.
+  **31 new tests** (11 Range-parsing unit tests, 4 `DirectFileDownloadStrategy`
+  tests via `wiremock` including a real cancellation-mid-stream case, 2
+  `DownloadStrategyResolver` tests, 2 new `Download` domain tests for
+  `retry()`, 6 `/api/downloads` integration tests covering create→complete→
+  serve, not-ready-yet content, 404, cancel-while-downloading, retry-after-
+  failure with a mock that fails once then succeeds, and retry-rejected-
+  when-not-failed) — stable across repeated runs despite being
+  concurrency/timing-sensitive (spawned background tasks, cancellation
+  races), not just passing once.
+  **Manually verified against the real internet**: created a download of a
+  real GitHub-hosted file, polled it through `pending → downloading →
+  completed`, served the content back (byte-for-byte correct), served a
+  `Range: bytes=0-4` partial request (206, correct bytes), confirmed
+  cancel-after-complete and retry-after-complete both correctly no-op/reject,
+  confirmed unknown IDs 404.
+
 ## Explicitly not built yet (by design — see AGENTS.md rule 15)
 
-- No `/api/downloads/*` routes — nothing wires the repository to HTTP yet,
-  and nothing actually downloads a file (Phase 1d).
+- No formal job queue / concurrency limiting — every download spawns
+  immediately, no cap on simultaneous downloads. Doc §24/§35's `IJobQueue`
+  + concurrency-limit-2 is explicitly Phase 6 ("Advanced Download Manager"),
+  not Phase 1.
+- No automatic temp-file cleanup — files accumulate in `TEMP_STORAGE_PATH`
+  until manually cleared. Deferred rather than half-built (deleting on
+  every serve would break multi-request Range access, e.g. video seeking).
+- No partial-resume — `retry()` always restarts from byte zero.
 - No IndexedDB / library / player / file-manager frontend features.
-- No SSE progress stream (ADR 0004 — planned, not implemented).
+- No SSE progress stream (ADR 0004 — planned, not implemented); frontend
+  will need to poll `GET /api/downloads/:id` for now.
 - `droply-media` crate doesn't exist (FFmpeg lands at Phase 4).
-- `DownloadStrategy` trait doesn't exist yet (Phase 1d).
 - No GitHub remote — repo is local-only.
 
 ## Known follow-ups
 
 - Push to a GitHub remote and confirm the CI workflow actually runs green
   in Actions (only validated locally so far).
+- Temp-storage cleanup sweep (see above).
 
 ## Next planned work
 
-Phase 1d: `DownloadStrategy` trait + `DirectFileDownloadStrategy`
-(streaming, cancellable, doc §28) + `/api/downloads` routes (create,
-status, cancel, retry, content with Range support), wiring
-`DownloadRepository` into the API. Phase 1e: frontend Analyze feature wired
-to the (currently disabled) Home page form.
+Phase 1e: frontend Analyze feature wired to the (currently disabled) Home
+page form, plus a Downloads view (progress polling, cancel/retry buttons)
+— the last piece of Phase 1's "smallest complete vertical slice."

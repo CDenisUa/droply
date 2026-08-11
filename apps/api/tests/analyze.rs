@@ -57,7 +57,10 @@ async fn analyzes_a_direct_file_and_returns_its_metadata() {
     let app = app(
         unused_pool(),
         cors_layer_from_env(None),
-        support::direct_file_resolver(),
+        support::dependencies(
+            support::direct_file_resolver(),
+            support::empty_download_strategy_resolver(),
+        ),
     );
 
     let (status, body) = post_analyze(app, &format!("{}/song.mp3", server.uri())).await;
@@ -74,7 +77,10 @@ async fn rejects_a_malformed_url_with_400() {
     let app = app(
         unused_pool(),
         cors_layer_from_env(None),
-        support::direct_file_resolver(),
+        support::dependencies(
+            support::direct_file_resolver(),
+            support::empty_download_strategy_resolver(),
+        ),
     );
 
     let (status, body) = post_analyze(app, "not a url").await;
@@ -104,7 +110,10 @@ async fn returns_bad_gateway_when_the_source_is_unreachable() {
     let app = app(
         unused_pool(),
         cors_layer_from_env(None),
-        support::direct_file_resolver(),
+        support::dependencies(
+            support::direct_file_resolver(),
+            support::empty_download_strategy_resolver(),
+        ),
     );
 
     let (status, body) = post_analyze(app, &format!("{}/missing.mp4", server.uri())).await;
@@ -130,7 +139,11 @@ async fn rejects_a_private_ip_target_via_the_real_ssrf_validator() {
         Arc::new(DirectFileAnalyzer::new(validator).unwrap());
     let resolver = Arc::new(MediaSourceResolver::new(vec![analyzer]));
 
-    let app = app(unused_pool(), cors_layer_from_env(None), resolver);
+    let app = app(
+        unused_pool(),
+        cors_layer_from_env(None),
+        support::dependencies(resolver, support::empty_download_strategy_resolver()),
+    );
 
     let (status, body) = post_analyze(app, "http://169.254.169.254/latest/meta-data/").await;
 
