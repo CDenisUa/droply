@@ -1,0 +1,30 @@
+# Render Blueprint — API only. Per docs/architecture.md §43/§46/§47 and
+# Droply-Architecture.md §42-49, Postgres lives on Neon (Render's free
+# Postgres expires after 30 days) and the frontend deploys to Cloudflare
+# Pages (not Render), so neither is defined here.
+#
+# One-time manual steps after importing this blueprint in the Render
+# dashboard (New > Blueprint > this repo):
+#   1. Create a Neon project (https://neon.tech), copy its pooled
+#      connection string, and set it as this service's DATABASE_URL.
+#   2. Once the Cloudflare Pages frontend is live, set CORS_ALLOWED_ORIGINS
+#      to its URL (e.g. https://droply-web.pages.dev), comma-separated if
+#      there's also a custom domain.
+# Both are marked `sync: false` below so Render prompts for them on first
+# deploy instead of silently deploying with an empty/wrong value.
+services:
+  - type: web
+    name: droply-api
+    runtime: docker
+    dockerfilePath: docker/api.Dockerfile
+    dockerContext: .
+    plan: free
+    branch: main
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: RUST_LOG
+        value: info

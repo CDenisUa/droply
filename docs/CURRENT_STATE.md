@@ -226,6 +226,16 @@
 
 ## Known follow-ups
 
+- `render.yaml` (API only) and Cloudflare Pages support files
+  (`apps/web/public/_redirects` for SPA routing, `_headers` for the
+  service worker's `Cache-Control`) exist, but nothing is live yet — still
+  needs, one-time and manual (no credentials for these in this
+  environment): a Neon project (`DATABASE_URL`), importing the Render
+  blueprint and setting `DATABASE_URL`/`CORS_ALLOWED_ORIGINS`, a Cloudflare
+  Pages project pointed at `apps/web` (build `npm run build`, output
+  `dist`) with a `VITE_API_BASE_URL` build env var set to the Render API's
+  URL, then setting `CORS_ALLOWED_ORIGINS` on Render to the resulting
+  Pages URL.
 - No CI workflow exists yet — write `.github/workflows/ci.yml` (frontend +
   rust jobs) and confirm it runs green in Actions now that `origin` has
   commits.
