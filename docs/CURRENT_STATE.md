@@ -1,6 +1,7 @@
 # Current State
 
-> Updated: 2026-08-11 — Phase 0 (skeleton) complete and merged to `main`.
+> Updated: 2026-08-14 — Phase 1 (smallest complete vertical slice) complete
+> and merged to `main`, verified end-to-end through the actual browser UI.
 
 ## What actually works right now
 
@@ -53,10 +54,12 @@
   - `cargo fmt --all -- --check` — clean.
   - `npx oxlint` — clean.
   - `npm run build` (frontend) — succeeds, generates service worker.
-- **CI** (`.github/workflows/ci.yml`) — `frontend` and `rust` jobs, the
-  latter with a real Postgres service container. Not yet run on GitHub
-  (repo has no remote yet) — written and locally validated command-by-
-  command, but the workflow file itself hasn't executed in Actions.
+- **No CI workflow file exists yet** (`.github/workflows/` is absent) —
+  this doc previously claimed a `ci.yml` had been written; that was
+  inaccurate, corrected here. `cargo build/clippy/fmt/test` and
+  `npm run lint/typecheck/test/build` are run manually per AGENTS.md rule
+  20, not automated in Actions yet. A GitHub remote (`origin`) now exists
+  and is reachable, but nothing had been pushed until this Phase 1 merge.
 
 ## Phase 1 progress (in flight)
 
@@ -156,6 +159,55 @@
   cancel-after-complete and retry-after-complete both correctly no-op/reject,
   confirmed unknown IDs 404.
 
+- **Frontend Analyze + Downloads flow (Phase 1e)** — the last piece of
+  Phase 1's "smallest complete vertical slice," wiring the previously-inert
+  Home page form to the backend and adding a Downloads view.
+  - `AppNav` (`apps/web/src/app/AppNav.tsx`) — top nav with Home/Downloads
+    links.
+  - `apps/web/src/entities/download/types.ts` — frontend `Download`/
+    `DownloadStatus` types mirroring the backend DTO, plus
+    `ACTIVE_DOWNLOAD_STATUSES` (used to decide when to keep polling and
+    whether Cancel is meaningful).
+  - `features/source-analyzer` — `analyzeSource` (`POST
+    /api/sources/analyze`) + `useAnalyzeSource` mutation hook.
+  - `features/downloads` — `downloadsApi` (create/list/get/cancel/retry/
+    content-URL), `useCreateDownload`, `useDownloadActions`
+    (cancel + retry), `useDownloadsList` (polls `GET /api/downloads` every
+    1s only while at least one download is in an active status, per
+    ADR 0004 — no SSE yet), and `DownloadItem`/`DownloadsList` components.
+  - `pages/Downloads` — renders `DownloadsList`; reachable via the nav.
+  - Home page: paste-URL form now calls `useAnalyzeSource`, shows the
+    result (title/mime/size via `formatBytes`), and a "Start Download"
+    button that calls `useCreateDownload` and navigates to `/downloads`.
+  - `shared/utils/formatBytes`, `shared/utils/describeApiError` (shared
+    by Home's analyze/create-download errors and `DownloadItem`'s
+    cancel/retry errors — turns a typed `ApiError` into its message, falls
+    back to a caller-supplied generic string for non-`ApiError` failures).
+  - **A real bug found only by manual browser verification, not by any
+    automated test**: the backend's `CorsLayer` set `allow_methods` but
+    never `allow_headers`, so the browser's preflight `OPTIONS` request for
+    any JSON `POST` (analyze, create-download, ...) was rejected — `Content-
+    Type: application/json` isn't a CORS-safelisted header. Every existing
+    test (Rust integration tests via `oneshot`, frontend tests that mock
+    `fetch`) bypasses real preflight entirely, and prior manual checks used
+    `curl`, which also skips it — so this was invisible until an actual
+    browser hit the actual backend. Fixed by adding
+    `.allow_headers([CONTENT_TYPE])` in `cors_layer_from_env`
+    (`apps/api/src/lib.rs`); guarded against regressing with a new
+    `apps/api/tests/cors.rs` integration test that sends a real preflight
+    request and asserts `Content-Type` comes back in
+    `Access-Control-Allow-Headers`.
+  - **Manually verified against the real internet through the browser**
+    (Playwright-driven, not just `curl`): analyzed a real
+    `raw.githubusercontent.com` file, started the download, watched it
+    reach `Completed` on the Downloads page, confirmed the "Open" link
+    serves byte-correct content with the right `Content-Disposition`, and
+    exercised Cancel/Retry against the live backend.
+  - 12 new/updated frontend test files (component tests for `HomePage`,
+    `DownloadItem`, `DownloadsList`, unit tests for `formatBytes`,
+    `describeApiError`, `client.ts`) — 30 unit tests total, all passing;
+    `e2e/smoke.spec.ts` extended to cover the Downloads nav link.
+
 ## Explicitly not built yet (by design — see AGENTS.md rule 15)
 
 - No formal job queue / concurrency limiting — every download spawns
@@ -174,12 +226,24 @@
 
 ## Known follow-ups
 
-- Push to a GitHub remote and confirm the CI workflow actually runs green
-  in Actions (only validated locally so far).
+- No CI workflow exists yet — write `.github/workflows/ci.yml` (frontend +
+  rust jobs) and confirm it runs green in Actions now that `origin` has
+  commits.
 - Temp-storage cleanup sweep (see above).
+- Downloads left `Pending`/`Downloading` when the API process restarts are
+  orphaned forever — the owning `tokio` task (and its
+  `active_cancellations` entry) is gone, so `cancel` silently no-ops and
+  nothing ever resumes or fails them. Observed directly against the local
+  Docker Postgres volume across container restarts. Not a regression in
+  Phase 1e's code; it's inherent to "every download spawns immediately, no
+  queue" (see below) — recovering/reaping orphaned rows on startup belongs
+  with the Phase 6 job queue, not before.
 
 ## Next planned work
 
-Phase 1e: frontend Analyze feature wired to the (currently disabled) Home
-page form, plus a Downloads view (progress polling, cancel/retry buttons)
-— the last piece of Phase 1's "smallest complete vertical slice."
+Phase 1 is now a complete, browser-verified vertical slice: paste a URL →
+analyze → start a direct-file download → watch it complete on the
+Downloads page → open the result. Next up is whatever Phase 2 of
+`Droply-Architecture.md` covers (not yet scoped in this doc) — plus the CI
+workflow follow-up above before that work starts piling up unverified in
+Actions.

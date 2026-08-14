@@ -66,4 +66,5 @@ pub fn cors_layer_from_env(value: Option<&str>) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(origins)
         .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        .allow_headers([axum::http::header::CONTENT_TYPE])
 }
